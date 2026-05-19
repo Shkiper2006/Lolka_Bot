@@ -7,6 +7,7 @@ async def handle_start(client: LolkaClient, channel_id: str) -> dict:
         "Доступные команды:\n"
         "/start\n"
         "/form create\n"
-        "/form fill <form_id>"
+        "/form fill <form_id>\n"
+        "/form dialog <form_id>"
     )
     return await client.send_channel_message(channel_id, message)
