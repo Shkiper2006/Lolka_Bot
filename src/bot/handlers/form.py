@@ -1,6 +1,8 @@
 from integrations.lolka_client import LolkaClient
 from bot.forms_service import FormService
 from bot.forms_service import FormField, FormFieldType, FormValidationError
+from bot.reporting import ReportDeliveryError, build_report_json, build_report_text, deliver_report_with_retry
+from config.settings import Settings
 
 
 FORM_SERVICE = FormService()
@@ -83,8 +85,27 @@ async def handle_form_dialog_confirm(client: LolkaClient, channel_id: str, user_
         return {"ok": True}
     if text.strip().lower() == "подтвердить":
         submission = FORM_SERVICE.complete_draft_submission(session["form_id"], user_id, session["answers"])
+        form = FORM_SERVICE.get_form(session["form_id"])
+        report_text = build_report_text(form, submission)
+        report_payload = build_report_json(form, submission)
+        settings = Settings.from_env()
+        delivery_error = None
+        try:
+            await deliver_report_with_retry(
+                client=client,
+                channel_id=settings.lolka_report_channel_id,
+                text_report=report_text,
+                json_payload=report_payload,
+                submission_id=submission.id,
+            )
+        except ReportDeliveryError:
+            delivery_error = " Отчет будет доставлен позже: отправка в канал временно недоступна."
+
         del ACTIVE_SESSIONS[(channel_id, user_id)]
-        return await client.send_channel_message(channel_id, f"Форма отправлена. Submission: {submission.id}")
+        return await client.send_channel_message(
+            channel_id,
+            f"Форма отправлена успешно. ID отправки: {submission.id}.{delivery_error or ''}",
+        )
     if text.strip().lower() == "назад":
         form = FORM_SERVICE.get_form(session["form_id"])
         session["step"] = len(form.fields) - 1
