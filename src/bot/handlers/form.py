@@ -2,10 +2,12 @@ from integrations.lolka_client import LolkaClient
 from bot.forms_service import FormService
 from bot.forms_service import FormField, FormFieldType, FormValidationError
 from bot.reporting import ReportDeliveryError, build_report_json, build_report_text, deliver_report_with_retry
+from storage.services import SubmitFormService
 from config.settings import Settings
 
 
 FORM_SERVICE = FormService()
+SUBMIT_FORM_SERVICE = SubmitFormService()
 ACTIVE_SESSIONS: dict[tuple[str, str], dict] = {}
 
 
@@ -85,6 +87,7 @@ async def handle_form_dialog_confirm(client: LolkaClient, channel_id: str, user_
         return {"ok": True}
     if text.strip().lower() == "подтвердить":
         submission = FORM_SERVICE.complete_draft_submission(session["form_id"], user_id, session["answers"])
+        SUBMIT_FORM_SERVICE.submit(form_id=session["form_id"], user_id=user_id, answers=session["answers"])
         form = FORM_SERVICE.get_form(session["form_id"])
         report_text = build_report_text(form, submission)
         report_payload = build_report_json(form, submission)
