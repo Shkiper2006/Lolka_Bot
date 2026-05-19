@@ -50,8 +50,10 @@ class FormSubmission:
     id: str
     form_id: str
     user_id: str
+    status: str
     answers: dict[str, Any]
     created_at: datetime
+    updated_at: datetime
 
 
 class FormValidationError(ValueError):
@@ -149,16 +151,58 @@ class FormService:
     def submit_form(self, form_id: str, user_id: str, answers: dict[str, Any]) -> FormSubmission:
         form = self.get_form(form_id)
         self._validate_answers(form, answers)
+        now = datetime.now(timezone.utc)
 
         submission = FormSubmission(
             id=str(uuid4()),
             form_id=form_id,
             user_id=user_id,
+            status="submitted",
             answers=answers,
-            created_at=datetime.now(timezone.utc),
+            created_at=now,
+            updated_at=now,
         )
         self._submissions.setdefault(form_id, []).append(submission)
         return submission
+
+    def save_draft_submission(self, form_id: str, user_id: str, answers: dict[str, Any]) -> FormSubmission:
+        form = self.get_form(form_id)
+        now = datetime.now(timezone.utc)
+        existing = self.get_draft_submission(form_id, user_id)
+        if existing:
+            existing.answers = answers
+            existing.updated_at = now
+            return existing
+
+        submission = FormSubmission(
+            id=str(uuid4()),
+            form_id=form.id,
+            user_id=user_id,
+            status="draft",
+            answers=answers,
+            created_at=now,
+            updated_at=now,
+        )
+        self._submissions.setdefault(form_id, []).append(submission)
+        return submission
+
+    def get_draft_submission(self, form_id: str, user_id: str) -> FormSubmission | None:
+        for submission in self._submissions.get(form_id, []):
+            if submission.user_id == user_id and submission.status == "draft":
+                return submission
+        return None
+
+    def complete_draft_submission(self, form_id: str, user_id: str, answers: dict[str, Any]) -> FormSubmission:
+        form = self.get_form(form_id)
+        self._validate_answers(form, answers)
+        now = datetime.now(timezone.utc)
+        draft = self.get_draft_submission(form_id, user_id)
+        if draft:
+            draft.answers = answers
+            draft.status = "submitted"
+            draft.updated_at = now
+            return draft
+        return self.submit_form(form_id, user_id, answers)
 
     def as_lolka_ui_schema(self, form_id: str) -> dict[str, Any]:
         form = self.get_form(form_id)
